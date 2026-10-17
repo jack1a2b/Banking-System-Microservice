@@ -2,6 +2,7 @@ package com.banking.transactionservice.service;
 
 
 import com.banking.transactionservice.client.AccountServiceClient;
+import com.banking.transactionservice.dto.TransactionEvent;
 import com.banking.transactionservice.dto.TransactionRequest;
 import com.banking.transactionservice.dto.TransactionResponse;
 import com.banking.transactionservice.event.TransactionInitiatedEvent;
@@ -40,8 +41,10 @@ public class TransactionService {
 
     public ResponseEntity<List<TransactionResponse>> getAllTransaction() {
         try {
-            List<TransactionResponse> transactions = transRepo.findAllTransations();
-            return new ResponseEntity<>(transactions, HttpStatus.OK);
+            List<Transaction> transactions = transRepo.findAllTransations();
+            List<TransactionResponse>  responses = generateTransactionResponse(transactions);
+
+            return new ResponseEntity<>(responses, HttpStatus.OK);
         }catch (Exception e){
             log.error("Error in fetching all transactions");
             throw new RuntimeException(e.getMessage());
@@ -64,6 +67,9 @@ public class TransactionService {
     public ResponseEntity<List<TransactionResponse>> getAccountTransactionHis(@Valid String accountNumber) {
         try {
             List<Transaction> transactions = transRepo.findBySenderAccountNumberOrderByCreatedAtDesc(accountNumber);
+
+            //Here am typecasting from type transaction to type transaction response
+            //Using generateTransactionResponse
             List<TransactionResponse> responses = generateTransactionResponse(transactions);
             return new ResponseEntity<>(responses, HttpStatus.OK);
         } catch (RuntimeException e) {
@@ -78,30 +84,39 @@ public class TransactionService {
     public ResponseEntity<TransactionRequest> processTransaction(@Valid TransactionRequest request) {
         log.info("SAGA STEP 1 - Transfer: {} -> {}\nAmount {} ",request.getSenderAccountNumber(), request.getReceiverAccountNumber(), request.getAmount());
 
+        TransactionEvent events = new TransactionEvent();
+        events.setAccountNumber(request.getSenderAccountNumber());
+        events.setAmount(request.getAmount());
+
         try {
-            client.deductBalance(request.getSenderAccountNumber(), request.getAmount());
+            kafkaTemplate.send("deduct.account", events);
+//            client.deductBalance(request.getSenderAccountNumber(), request.getAmount());
         }catch (RuntimeException e){
             log.error("Problem calling the deduct method using the account service client");
             throw new RuntimeException("Problem calling the deduct method using the account service client " + e.getMessage());
         }
-
-        Transaction transaction = new Transaction();
-        transaction.setSenderAccountNumber(request.getSenderAccountNumber());
-        transaction.setReceiverAccountNumber(request.getReceiverAccountNumber());
-        transaction.setAmount(request.getAmount());
-        transaction.setDescription(request.getDescription());
-        transaction.setType(TransactionType.TRANSFER);
-        transaction.setStatus(TransactionStatus.PROCESSING);
-        transaction.setReferenceNumber(UUID.randomUUID().toString());
         try {
+
+            Transaction transaction = new Transaction();
+
+            transaction.setSenderAccountNumber(request.getSenderAccountNumber());
+            transaction.setReceiverAccountNumber(request.getReceiverAccountNumber());
+            transaction.setAmount(request.getAmount());
+            transaction.setDescription(request.getDescription());
+            transaction.setType(TransactionType.TRANSFER);
+            transaction.setStatus(TransactionStatus.PROCESSING);
+            transaction.setReferenceNumber(UUID.randomUUID().toString());
+
             Transaction savedTransaction = transRepo.save(transaction);
             log.info("transaction saved as processing {}", savedTransaction.getId());
 
             TransactionInitiatedEvent event = new TransactionInitiatedEvent();
+
             event.setTransactionId(savedTransaction.getId());
             event.setAmount(savedTransaction.getAmount());
             event.setSenderAccountNumber(savedTransaction.getSenderAccountNumber());
             event.setReceiverAccountNumber(savedTransaction.getReceiverAccountNumber());
+
 
             TransactionRequest transactionRequest = new TransactionRequest();
 
@@ -167,4 +182,9 @@ public class TransactionService {
         response.setCompletedAt(transaction.getCompletedAt());
         return  response;
     }
+
+
+//    public void updateTransactionStatus(String accountNumber) {
+//        Transaction savedTransaction = transRepo.findB
+//    }
 }

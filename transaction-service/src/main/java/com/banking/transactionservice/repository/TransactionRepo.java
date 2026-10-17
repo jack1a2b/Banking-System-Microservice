@@ -14,7 +14,7 @@ import java.util.List;
 public interface TransactionRepo extends JpaRepository<Transaction, String> {
 
     @Query(value = "SELECT * FROM transactions", nativeQuery = true)
-    List<TransactionResponse> findAllTransations();
+    List<Transaction> findAllTransations();
 
     List<Transaction> findBySenderAccountNumberOrderByCreatedAtDesc(@Valid String accountNumber);
 }
