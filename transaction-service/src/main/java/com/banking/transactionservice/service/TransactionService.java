@@ -88,8 +88,17 @@ public class TransactionService {
         events.setAccountNumber(request.getSenderAccountNumber());
         events.setAmount(request.getAmount());
 
+
         try {
-            kafkaTemplate.send("deduct.account", events);
+
+            ResponseEntity<Boolean> result = client.checkBalance(request.getSenderAccountNumber(), request.getAmount());
+
+            if (Boolean.TRUE.equals(result.getBody())){
+                kafkaTemplate.send("deduct.account", events);
+            }else {
+                log.info("Amount balance is insufficient");
+                return new ResponseEntity<>(new TransactionRequest(), HttpStatus.FORBIDDEN);
+            }
 //            client.deductBalance(request.getSenderAccountNumber(), request.getAmount());
         }catch (RuntimeException e){
             log.error("Problem calling the deduct method using the account service client");

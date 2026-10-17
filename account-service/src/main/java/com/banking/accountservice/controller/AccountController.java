@@ -67,7 +67,6 @@ public class AccountController {
      * This method will be called by the transaction service to
      * Check balance before publishing an event to deduct balance
      */
-
     @GetMapping("/{accountNumber}/check-balance")
     public ResponseEntity<Boolean> checkBalance(@PathVariable String accountNumber, @RequestParam BigDecimal amount){
         log.info("checking balance for account number: {}\nTo deduct amount {}", accountNumber, amount);
