@@ -5,6 +5,7 @@ import com.banking.accountservice.dto.AccountResponse;
 import com.banking.accountservice.dto.CreateAccountRequest;
 import com.banking.accountservice.service.AccountService;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Repository;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 
+@Slf4j
 @Repository
 @RequestMapping("/api/v1/accounts")
 public class AccountController {
@@ -59,6 +61,17 @@ public class AccountController {
     @PutMapping("/{accountNumber}/credit")
     public ResponseEntity<String> creditAccount(@PathVariable String accountNumber, @RequestParam BigDecimal amount){
         return  accService.creditAccount(accountNumber, amount);
+    }
+
+    /**
+     * This method will be called by the transaction service to
+     * Check balance before publishing an event to deduct balance
+     */
+
+    @GetMapping("/{accountNumber}/check-balance")
+    public ResponseEntity<Boolean> checkBalance(@PathVariable String accountNumber, @RequestParam BigDecimal amount){
+        log.info("checking balance for account number: {}\nTo deduct amount {}", accountNumber, amount);
+        return accService.checkBalance(accountNumber, amount);
     }
 
 }

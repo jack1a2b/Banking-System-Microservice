@@ -171,6 +171,23 @@ public class AccountService {
         }
     }
 
+
+    public ResponseEntity<Boolean> checkBalance(String accountNumber, BigDecimal amount) {
+        try {
+            Account account = accRepo.findByAccountNumber(accountNumber);
+            if(account.getBalance().compareTo(amount) > 0){
+                return new ResponseEntity<>(true, HttpStatus.OK);
+            }
+
+            return new ResponseEntity<>(false, HttpStatus.OK);
+
+        } catch (RuntimeException e) {
+            log.error("Error checking account balance: {}\nTo deduct amount: {}", accountNumber, amount);
+            throw new RuntimeException(e);
+        }
+
+    }
+
     private AccountResponse createResponseHandler(Account savedAccount) {
         AccountResponse response = new AccountResponse();
         response.setId(savedAccount.getId());
@@ -204,4 +221,6 @@ public class AccountService {
         );
         return account;
     }
+
+
 }
