@@ -4,7 +4,7 @@ import com.banking.frauddetectionservice.client.AccountServiceClient;
 import com.banking.frauddetectionservice.client.TransactionServiceClient;
 import com.banking.frauddetectionservice.dto.TransactionEvent;
 import com.banking.frauddetectionservice.dto.TransactionResponse;
-import com.banking.frauddetectionservice.fraudCheck.FraudCheckResult;
+import com.banking.frauddetectionservice.dto.FraudCheckResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;

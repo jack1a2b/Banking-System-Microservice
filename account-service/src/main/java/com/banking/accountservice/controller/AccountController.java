@@ -21,7 +21,7 @@ public class AccountController {
     @Autowired
     AccountService accService;
 
-    @PostMapping
+    @PostMapping("/create")
     public ResponseEntity<AccountResponse> createAccount(@Valid @RequestBody CreateAccountRequest request){
         return accService.createAccount(request);
     }

@@ -1,7 +1,7 @@
 package com.banking.frauddetectionservice.service;
 
 import com.banking.frauddetectionservice.dto.TransactionResponse;
-import com.banking.frauddetectionservice.fraudCheck.FraudCheckResult;
+import com.banking.frauddetectionservice.dto.FraudCheckResult;
 import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
