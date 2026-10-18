@@ -1,10 +1,13 @@
 package com.banking.frauddetectionservice.service;
 
+import com.banking.frauddetectionservice.client.AccountServiceClient;
 import com.banking.frauddetectionservice.client.TransactionServiceClient;
 import com.banking.frauddetectionservice.dto.TransactionEvent;
 import com.banking.frauddetectionservice.dto.TransactionResponse;
+import com.banking.frauddetectionservice.fraudCheck.FraudCheckResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -15,25 +18,60 @@ import java.util.List;
 @Slf4j
 @RequiredArgsConstructor
 public class FraudService {
+    private static final String VERIFICATION_REQUIRED_TOPIC = "verification.required";
+    private static final String FRAUD_CHECK_CLEAN_RESULT_TOPIC = "fraud.check.clean";
 
-    TransactionServiceClient client;
+    TransactionServiceClient transClient;
+    AccountServiceClient accClient;
+    FraudCheck fraudCheck;
 
-    KafkaTemplate<String, Object> kafkaTemplate;
+    private  final KafkaTemplate<String, Object> kafkaTemplate;
 
     public void analyzeTransaction(TransactionEvent event) {
-        log.info("Analyzing transaction - account number {}", event.getAccountNumber());
 
-        List<TransactionResponse> responses = client.accountTransactionHistory(event.getAccountNumber());
+
+        ResponseEntity<BigDecimal> accClientBalance = accClient.getBalance(event.getAccountNumber());
+
+        BigDecimal accountBalance = accClientBalance.getBody();
+
+
+        log.info("Checking transaction: {}\nAccount: {}\nAmount: {}\nBalance: {}", event.getTransactionId(), event.getAccountNumber(), event.getAmount(), accountBalance);
+
+        List<TransactionResponse> responses = transClient.accountTransactionHistory(event.getAccountNumber());
+
+        FraudCheckResult result = fraudCheck.performFraudChecks(event.getAccountNumber(), responses, event.getAmount(), accountBalance);
+
+        if(result.isFraud()){
+            event.setFraud(true);
+            event.setReason(result.getReason());
+            log.info("Suspicious activities detected - account: {}\nReason: {}\nRequesting OTP verification", event.getAccountNumber(), event.getReason());
+
+            kafkaTemplate.send(VERIFICATION_REQUIRED_TOPIC, event.getTransactionId(), event);
+        }else{
+            log.info("Transaction clean");
+            event.setReason(null);
+            event.setFraud(false);
+            kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC, event);
+        }
+
+
+
+
+
+
+
+
         /**
          * If accoun is total transaction is more than 100000
          * flagged fraud.detected
          * else transaction.completed
          */
-        BigDecimal totalTransactionAmount = new BigDecimal(0);
+        BigDecimal totalTransactionAmount = BigDecimal.ZERO;
 
-        for (TransactionResponse response : responses){
-            totalTransactionAmount.add(response.getAmount());
+        for (TransactionResponse response : responses) {
+            totalTransactionAmount = totalTransactionAmount.add(response.getAmount());
         }
+
 
         if (totalTransactionAmount.compareTo(BigDecimal.valueOf(100000)) > 0){
             kafkaTemplate.send("transaction.completed",event);
