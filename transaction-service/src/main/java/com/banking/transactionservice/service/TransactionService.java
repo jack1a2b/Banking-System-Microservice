@@ -13,12 +13,12 @@ import com.banking.transactionservice.repository.TransactionRepo;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -29,6 +29,8 @@ import java.util.UUID;
 public class TransactionService {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    //will add redis dependency in my pom file later
+    private final StringRedisTemplate<String, String>  redisTemplate;
 
     private TransactionRepo transRepo;
 
@@ -145,11 +147,53 @@ public class TransactionService {
 
     }
 
-//    TO BE IMPLEMENTED LATTER
-//    public ResponseEntity<TransactionResponse> verifyOTP(String transactionId, String otp) {
-//
-//    }
+    public ResponseEntity<TransactionResponse> verifyOTP(String transactionId, String otp) {
 
+        String key = "verification:otp" + transactionId;
+
+        Transaction transaction = transRepo.findById(transactionId).get();
+
+
+        String savedOtp = redisTemplate.opsForValue().get(key);
+
+        if (savedOtp == null){
+            log.info("OTP already expired");
+            transaction.setStatus(TransactionStatus.FLAGGED);
+            transaction.setDescription("OTP expired!!");
+            transRepo.save(transaction);
+            compensateSender(transaction.getSenderAccountNumber(),transactionId, transaction.getAmount());
+            throw new IllegalStateException("otp expired!!");
+            return new ResponseEntity<>(generateResponse(transaction), HttpStatus.NOT_ACCEPTABLE);
+        }
+
+        if(!otp.equals(savedOtp)){
+            //log incorrect otp block account and flag
+            redisTemplate.delete(key);
+
+            String message = client.blockAccount(transaction.getSenderAccountNumber());
+            transaction.setDescription("Account Block kindly visit the nearest branch");
+            transaction.setStatus(TransactionStatus.FAILED);
+            transRepo.save(transaction);
+            log.warn("OTP not valid account will be block for security reason. Please visit the nearest branch for review\n{}", message);
+            compensateSender(transaction.getSenderAccountNumber(),transactionId, transaction.getAmount());
+            return new ResponseEntity<>(generateResponse(transaction), HttpStatus.NOT_ACCEPTABLE);
+        }
+
+        //Credit account
+        String message = client.creditAccount(transaction.getReceiverAccountNumber(),transaction.getAmount()).getBody();
+        transaction.setFailureReason("");
+        transaction.setDescription(message);
+        transaction.setStatus(TransactionStatus.COMPLETED);
+
+        transRepo.save(transaction);
+
+        return new ResponseEntity<>(generateResponse(transaction), HttpStatus.OK);
+    }
+
+    private void compensateSender(String senderAccountNumber, String transactionId, BigDecimal amount) {
+        log.info("Compensating Transaction: {}\nTo account number: {} With amount: {} ", transactionId, senderAccountNumber ,amount );
+        client.creditAccount(senderAccountNumber, amount);
+    }
 
 
     private List<TransactionResponse> generateTransactionResponse(List<Transaction> transactions) {

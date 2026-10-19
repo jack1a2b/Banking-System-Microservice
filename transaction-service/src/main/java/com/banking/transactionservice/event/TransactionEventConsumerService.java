@@ -35,6 +35,7 @@ public class TransactionEventConsumerService {
         log.warn("Verification required for transaction: {}, account: {}, amount: {}\nReason: {}", event.getTransactionId(), event.getAccountNumber(), event.getAmount(), event.getReason());
         String transactionId = event.getTransactionId();
         Transaction transaction = transRepo.findById(transactionId).get();
+
         if(transaction.getStatus() != TransactionStatus.PROCESSING){
             log.warn("Problem with the transaction status of transaction: {}, has a transaction status of: {}", transactionId, transaction.getStatus());
             throw new RuntimeException("Theres is a problem with transaction status");
@@ -48,6 +49,7 @@ public class TransactionEventConsumerService {
         redisTemplate.opsForValue().set(otpKey, otp, Duration.ofMinutes(otpExpirationDuration));
 
         transaction.setStatus(TransactionStatus.PENDING_VERIFICATION);
+        transaction.setFailureReason(event.getReason());
         transRepo.save(transaction);
 
         log.info("OTP generated of transaction: {}, And expired in {} minutes", transactionId ,otpExpirationDuration);
@@ -61,7 +63,6 @@ public class TransactionEventConsumerService {
         eventDTO.setReason(event.getReason());
 
         kafkaTemplate.send("otp.generated", eventDTO);
-
 
     }
 }

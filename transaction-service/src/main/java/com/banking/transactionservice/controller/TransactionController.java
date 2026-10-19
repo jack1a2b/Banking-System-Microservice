@@ -49,10 +49,10 @@ public class TransactionController {
     public ResponseEntity<TransactionRequest> processTransaction(@Valid @RequestBody TransactionRequest request){
         return transService.processTransaction(request);
     }
-//    TO BE IMPLEMENTED LATTER
-//    @PostMapping("/{transactionId}/verify")
-//    public ResponseEntity<TransactionResponse> verifyOTP(@PathVariable String transactionId, @RequestParam String otp){
-//        log.info("verification otp sent - transaction: {}", transactionId);
-//        return transService.verifyOTP(transactionId, otp);
-//    }
+
+    @PostMapping("/{transactionId}/verify")
+    public ResponseEntity<TransactionResponse> verifyOTP(@PathVariable String transactionId, @RequestParam String otp){
+        log.info("verification otp sent - transaction: {}", transactionId);
+        return transService.verifyOTP(transactionId, otp);
+    }
 }

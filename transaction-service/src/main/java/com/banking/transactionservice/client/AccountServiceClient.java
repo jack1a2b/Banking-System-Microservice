@@ -20,4 +20,7 @@ public interface AccountServiceClient {
 
     @GetMapping("/api/v1/accounts/{accountNumber}/check-balance")
     ResponseEntity<Boolean> checkBalance(@PathVariable String accountNumber, @RequestParam BigDecimal amount);
+
+    @PutMapping("/api/v1/accounts/{accountNumber}/block")
+    String blockAccount(@PathVariable String accountNumber);
 }
