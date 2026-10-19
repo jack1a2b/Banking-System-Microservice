@@ -2,6 +2,7 @@ package com.banking.transactionservice.service;
 
 
 import com.banking.transactionservice.client.AccountServiceClient;
+import com.banking.transactionservice.dto.OtpGeneratedEventDTO;
 import com.banking.transactionservice.dto.TransactionEvent;
 import com.banking.transactionservice.dto.TransactionRequest;
 import com.banking.transactionservice.dto.TransactionResponse;
@@ -162,6 +163,16 @@ public class TransactionService {
             transaction.setDescription("OTP expired!!");
             transRepo.save(transaction);
             compensateSender(transaction.getSenderAccountNumber(),transactionId, transaction.getAmount());
+
+            OtpGeneratedEventDTO eventDTO = new OtpGeneratedEventDTO();
+            eventDTO.setTransactionId(transactionId);
+            eventDTO.setReason("Otp already expired!!");
+            eventDTO.setAmount(transaction.getAmount());
+            eventDTO.setAccountNumber(transaction.getSenderAccountNumber());
+            eventDTO.setOtp("");
+
+
+            kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC, eventDTO);
             throw new IllegalStateException("otp expired!!");
             return new ResponseEntity<>(generateResponse(transaction), HttpStatus.NOT_ACCEPTABLE);
         }
@@ -172,10 +183,20 @@ public class TransactionService {
 
             String message = client.blockAccount(transaction.getSenderAccountNumber());
             transaction.setDescription("Account Block kindly visit the nearest branch");
-            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setStatus(TransactionStatus.FLAGGED);
             transRepo.save(transaction);
             log.warn("OTP not valid account will be block for security reason. Please visit the nearest branch for review\n{}", message);
             compensateSender(transaction.getSenderAccountNumber(),transactionId, transaction.getAmount());
+
+            OtpGeneratedEventDTO eventDTO = new OtpGeneratedEventDTO();
+            eventDTO.setTransactionId(transactionId);
+            eventDTO.setReason("Otp not matched");
+            eventDTO.setAmount(transaction.getAmount());
+            eventDTO.setAccountNumber(transaction.getSenderAccountNumber());
+            eventDTO.setOtp("");
+
+
+            kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC, eventDTO);
             return new ResponseEntity<>(generateResponse(transaction), HttpStatus.NOT_ACCEPTABLE);
         }
 
@@ -186,11 +207,18 @@ public class TransactionService {
         transaction.setStatus(TransactionStatus.COMPLETED);
 
         transRepo.save(transaction);
+        OtpGeneratedEventDTO eventDTO = new OtpGeneratedEventDTO();
+        eventDTO.setTransactionId(transactionId);
+        eventDTO.setReason("");
+        eventDTO.setAmount(transaction.getAmount());
+        eventDTO.setAccountNumber(transaction.getSenderAccountNumber());
+        eventDTO.setOtp("");
 
+        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC, eventDTO);
         return new ResponseEntity<>(generateResponse(transaction), HttpStatus.OK);
     }
 
-    private void compensateSender(String senderAccountNumber, String transactionId, BigDecimal amount) {
+    public void compensateSender(String senderAccountNumber, String transactionId, BigDecimal amount) {
         log.info("Compensating Transaction: {}\nTo account number: {} With amount: {} ", transactionId, senderAccountNumber ,amount );
         client.creditAccount(senderAccountNumber, amount);
     }
