@@ -2,6 +2,7 @@ package com.banking.frauddetectionservice.service;
 
 import com.banking.frauddetectionservice.dto.TransactionResponse;
 import com.banking.frauddetectionservice.dto.FraudCheckResult;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
@@ -13,15 +14,9 @@ import java.util.List;
 @Slf4j
 public class FraudCheck {
 
-    /**
-     * Performs fraud checks on a transaction using velocity, average amount, and balance percentage rules.
-     * @param accountNumber The account being analyzed.
-     * @param allTransactions List of recent transaction amounts for this account.
-     * @param currentTransactionAmount The amount of the current transaction.
-     * @param accountBalance The current balance of the account.
-     * @return FraudCheckResult containing whether fraud is detected and the reason.
-     */
     public FraudCheckResult performFraudChecks( String accountNumber, List<TransactionResponse> allTransactions, BigDecimal currentTransactionAmount, BigDecimal accountBalance) {
+
+
 
         // Start with a default result: no fraud detected
         FraudCheckResult result = new FraudCheckResult(false, "No fraud detected");
@@ -37,7 +32,8 @@ public class FraudCheck {
             }
         }
 
-        if (countInLastMinute > 10) {
+        double maximum_transaction_per_minut = 10;
+        if (countInLastMinute > maximum_transaction_per_minut) {
             result.setFraud(true);
             result.setReason("Velocity check failed: more than 10 transactions in the last minute");
             return result;
@@ -62,7 +58,8 @@ public class FraudCheck {
             average = total.divide(BigDecimal.valueOf(count), RoundingMode.HALF_UP);
         }
 
-        if (average.compareTo(BigDecimal.ZERO) > 0 && currentTransactionAmount.compareTo(average.multiply(BigDecimal.valueOf(3))) > 0) {
+        double fraud_amount_multiplier = 3;
+        if (average.compareTo(BigDecimal.ZERO) > 0 && currentTransactionAmount.compareTo(average.multiply(BigDecimal.valueOf(fraud_amount_multiplier))) > 0) {
             result.setFraud(true);
             result.setReason("Transaction average check failed: current amount exceeds 3× average");
             return result;

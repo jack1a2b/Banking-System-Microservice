@@ -53,31 +53,7 @@ public class FraudService {
             event.setFraud(false);
             kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC, event);
         }
-
-
-
-
-
-
-
-
-        /**
-         * If accoun is total transaction is more than 100000
-         * flagged fraud.detected
-         * else transaction.completed
-         */
-        BigDecimal totalTransactionAmount = BigDecimal.ZERO;
-
-        for (TransactionResponse response : responses) {
-            totalTransactionAmount = totalTransactionAmount.add(response.getAmount());
-        }
-
-
-        if (totalTransactionAmount.compareTo(BigDecimal.valueOf(100000)) > 0){
-            kafkaTemplate.send("transaction.completed",event);
-        }else {
-            kafkaTemplate.send("fraud.detected", event);
-        }
+        
 
 
     }
