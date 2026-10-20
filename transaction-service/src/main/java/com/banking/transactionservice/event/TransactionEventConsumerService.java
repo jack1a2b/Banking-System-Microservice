@@ -9,6 +9,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -26,7 +27,7 @@ public class TransactionEventConsumerService {
     private TransactionService transactionService;
     private TransactionRepo transRepo;
     private long otpExpirationDuration = 5;
-    StringRedisTemplate<String, String> redisTemplate;
+    StringRedisTemplate redisTemplate;
     KafkaTemplate<String, Object> kafkaTemplate;
 
 
@@ -64,5 +65,10 @@ public class TransactionEventConsumerService {
 
         kafkaTemplate.send("otp.generated", eventDTO);
 
+    }
+
+    @KafkaListener(topics = "fraud.check.clean")
+    public void consumeFraudClean(@Payload TransactionEvent event){
+        transactionService.processFraudCheckClean(event.getTransactionId());
     }
 }

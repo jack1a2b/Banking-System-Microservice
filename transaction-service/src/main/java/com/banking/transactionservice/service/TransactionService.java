@@ -2,10 +2,7 @@ package com.banking.transactionservice.service;
 
 
 import com.banking.transactionservice.client.AccountServiceClient;
-import com.banking.transactionservice.dto.OtpGeneratedEventDTO;
-import com.banking.transactionservice.dto.TransactionEvent;
-import com.banking.transactionservice.dto.TransactionRequest;
-import com.banking.transactionservice.dto.TransactionResponse;
+import com.banking.transactionservice.dto.*;
 import com.banking.transactionservice.event.TransactionInitiatedEvent;
 import com.banking.transactionservice.model.Transaction;
 import com.banking.transactionservice.model.TransactionStatus;
@@ -14,14 +11,17 @@ import com.banking.transactionservice.repository.TransactionRepo;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -31,15 +31,15 @@ public class TransactionService {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
     //will add redis dependency in my pom file later
-    private final StringRedisTemplate<String, String>  redisTemplate;
+    private final StringRedisTemplate redisTemplate;
 
     private TransactionRepo transRepo;
-
     private AccountServiceClient client;
 
     private static final String TRANSACTION_INITIATED_TOPIC = "transaction.initiated";
     private static final String TRANSACTION_COMPLETED_TOPIC = "transaction.completed";
     private static final String TRANSACTION_REFUNDED_TOPIC = "transaction.refunded";
+    private static final String FRAUD_DETECTED_TOPIC = "fraud.detected";
 
 
     public ResponseEntity<List<TransactionResponse>> getAllTransaction() {
@@ -164,58 +164,91 @@ public class TransactionService {
             transRepo.save(transaction);
             compensateSender(transaction.getSenderAccountNumber(),transactionId, transaction.getAmount());
 
-            OtpGeneratedEventDTO eventDTO = new OtpGeneratedEventDTO();
-            eventDTO.setTransactionId(transactionId);
-            eventDTO.setReason("Otp already expired!!");
-            eventDTO.setAmount(transaction.getAmount());
-            eventDTO.setAccountNumber(transaction.getSenderAccountNumber());
-            eventDTO.setOtp("");
-
+            OtpGeneratedEventDTO eventDTO = prepareOtpExpireEvent(transactionId, transaction);
 
             kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC, eventDTO);
-            throw new IllegalStateException("otp expired!!");
             return new ResponseEntity<>(generateResponse(transaction), HttpStatus.NOT_ACCEPTABLE);
         }
 
         if(!otp.equals(savedOtp)){
             //log incorrect otp block account and flag
             redisTemplate.delete(key);
+            OtpGeneratedEventDTO eventDTO = prepareOtpEvent(transactionId, transaction);
 
-            String message = client.blockAccount(transaction.getSenderAccountNumber());
+            //Account service listen to this event and blocks the account immediately!!
+            kafkaTemplate.send(FRAUD_DETECTED_TOPIC, eventDTO);
+            //String message = client.blockAccount(transaction.getSenderAccountNumber());
             transaction.setDescription("Account Block kindly visit the nearest branch");
             transaction.setStatus(TransactionStatus.FLAGGED);
             transRepo.save(transaction);
-            log.warn("OTP not valid account will be block for security reason. Please visit the nearest branch for review\n{}", message);
+            log.warn("OTP not valid account will be block for security reason. Please visit the nearest branch for review\n{}", transaction.getFailureReason());
             compensateSender(transaction.getSenderAccountNumber(),transactionId, transaction.getAmount());
-
-            OtpGeneratedEventDTO eventDTO = new OtpGeneratedEventDTO();
-            eventDTO.setTransactionId(transactionId);
-            eventDTO.setReason("Otp not matched");
-            eventDTO.setAmount(transaction.getAmount());
-            eventDTO.setAccountNumber(transaction.getSenderAccountNumber());
-            eventDTO.setOtp("");
 
 
             kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC, eventDTO);
             return new ResponseEntity<>(generateResponse(transaction), HttpStatus.NOT_ACCEPTABLE);
         }
-
         //Credit account
+        completeTransaction(transaction);
+
+        return new ResponseEntity<>(generateResponse(transaction), HttpStatus.OK);
+    }
+
+    public void processFraudCheckClean(String transactionId) {
+        Optional<Transaction> transaction = transRepo.findById(transactionId);
+
+        if(transaction.isEmpty()){
+            throw new RuntimeException("Transaction not found: " + transactionId);
+        }
+
+        if(transaction.get().getStatus() != TransactionStatus.PROCESSING){
+            log.warn("Transaction {} not processing - skipping", transactionId);
+        }
+
+        completeTransaction(transaction.get());
+
+    }
+
+    private void completeTransaction(Transaction transaction) {
+        TransactionCompletedEvent eventDTO = prepareEvent(transaction);
         String message = client.creditAccount(transaction.getReceiverAccountNumber(),transaction.getAmount()).getBody();
         transaction.setFailureReason("");
         transaction.setDescription(message);
         transaction.setStatus(TransactionStatus.COMPLETED);
-
+        transaction.setCompletedAt(LocalDateTime.now());
         transRepo.save(transaction);
+        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC, eventDTO);
+    }
+
+    private OtpGeneratedEventDTO prepareOtpExpireEvent(String transactionId, Transaction transaction) {
         OtpGeneratedEventDTO eventDTO = new OtpGeneratedEventDTO();
         eventDTO.setTransactionId(transactionId);
-        eventDTO.setReason("");
+        eventDTO.setReason("Otp already expired!!");
         eventDTO.setAmount(transaction.getAmount());
         eventDTO.setAccountNumber(transaction.getSenderAccountNumber());
         eventDTO.setOtp("");
+        return eventDTO;
+    }
 
-        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC, eventDTO);
-        return new ResponseEntity<>(generateResponse(transaction), HttpStatus.OK);
+
+    private OtpGeneratedEventDTO prepareOtpEvent(String transactionId, Transaction transaction) {
+        OtpGeneratedEventDTO eventDTO = new OtpGeneratedEventDTO();
+        eventDTO.setTransactionId(transactionId);
+        eventDTO.setReason("Fraud detected");
+        eventDTO.setAmount(transaction.getAmount());
+        eventDTO.setAccountNumber(transaction.getSenderAccountNumber());
+        eventDTO.setOtp("");
+        return eventDTO;
+    }
+
+    private TransactionCompletedEvent prepareEvent(Transaction transaction) {
+        TransactionCompletedEvent eventDTO = new TransactionCompletedEvent();
+        eventDTO.setAmount(transaction.getAmount());
+        eventDTO.setSenderAccountNumber(transaction.getSenderAccountNumber());
+        eventDTO.setRevieverAccountNumber(transaction.getReceiverAccountNumber());
+        eventDTO.setTransactionid(transaction.getId());
+        eventDTO.setReferenceNumber(transaction.getReferenceNumber());
+        return eventDTO;
     }
 
     public void compensateSender(String senderAccountNumber, String transactionId, BigDecimal amount) {
@@ -263,6 +296,8 @@ public class TransactionService {
         response.setCompletedAt(transaction.getCompletedAt());
         return  response;
     }
+
+
 
 
 //    public void updateTransactionStatus(String accountNumber) {
