@@ -203,6 +203,7 @@ public class TransactionService {
 
         if(transaction.get().getStatus() != TransactionStatus.PROCESSING){
             log.warn("Transaction {} not processing - skipping", transactionId);
+            return;
         }
 
         completeTransaction(transaction.get());
