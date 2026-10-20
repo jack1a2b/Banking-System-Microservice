@@ -31,6 +31,7 @@ This repository implements a complete, production‑ready microservice banking p
 - **Spring Cloud** (Eureka, OpenFeign, API Gateway)  
 - **Apache Kafka** (event streaming)  
 - **PostgreSQL** (persistent storage)  
+- **Redis** (caching, easy fast data retrieval)  
 - **Docker & Docker Compose** (containerization and orchestration)  
 
 

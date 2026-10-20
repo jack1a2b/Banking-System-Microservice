@@ -211,14 +211,20 @@ public class TransactionService {
     }
 
     private void completeTransaction(Transaction transaction) {
-        TransactionCompletedEvent eventDTO = prepareEvent(transaction);
-        String message = client.creditAccount(transaction.getReceiverAccountNumber(),transaction.getAmount()).getBody();
-        transaction.setFailureReason("");
-        transaction.setDescription(message);
-        transaction.setStatus(TransactionStatus.COMPLETED);
-        transaction.setCompletedAt(LocalDateTime.now());
-        transRepo.save(transaction);
-        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC, eventDTO);
+        try {
+            TransactionCompletedEvent eventDTO = prepareEvent(transaction);
+            String message = client.creditAccount(transaction.getReceiverAccountNumber(),transaction.getAmount()).getBody();
+            transaction.setFailureReason("");
+            transaction.setDescription(message);
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction.setCompletedAt(LocalDateTime.now());
+            transRepo.save(transaction);
+            kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC, eventDTO);
+        } catch (RuntimeException e) {
+            log.info("Error completing the transaction in the complete transation method");
+            throw new RuntimeException(e);
+        }
+
     }
 
     private OtpGeneratedEventDTO prepareOtpExpireEvent(String transactionId, Transaction transaction) {
