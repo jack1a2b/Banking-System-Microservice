@@ -117,5 +117,28 @@ public class EventConsumerController {
         }
     }
 
+    @KafkaListener(topics = "payment.failed")
+    public void consumeFailedPaymentEvent(@Payload Map<String, Object> payload){
+
+        try {
+
+            String accountNumber = payload.get("accountNumber").toString();
+            String amount = payload.get("amount").toString();
+            String reason = payload.get("reason").toString();
+
+            String subject = "PAYMENT FAILED";
+            String message = "Payment of D" + amount + " Failed\n"
+                            + "Reason: " + reason + "\n"
+                            + "You are account will shortly be refunded";
+
+            notificationService.alertUser(accountNumber, subject, message);
+
+        }catch (Exception e){
+            log.error("Error handling payment failed notification to alert user about the failure");
+            throw new RuntimeException(e.getMessage());
+        }
+
+    }
+
 
 }
