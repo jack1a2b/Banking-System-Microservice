@@ -10,8 +10,6 @@ import java.math.BigDecimal;
 public class NotificationService {
 
 
-    public void alertUser(String transactionId, String accountNumber, BigDecimal amount, String otp, String reason) {
-        String VERIFICATION_HEADER = "TRANSACTION VERIFICATION REQUIRED";
-        log.info("{}\nFor transaction with id: {}\nAccount number: {}\nAmount: {}\nIf valid enter this six digit OTP: {}\nReason for verificaiton: {}",VERIFICATION_HEADER, transactionId, accountNumber, amount, otp, reason);
+    public void alertUser( String accountNumber,String subject, String reason) {
     }
 }
