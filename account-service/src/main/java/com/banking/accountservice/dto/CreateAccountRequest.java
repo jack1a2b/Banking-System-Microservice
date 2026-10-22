@@ -24,7 +24,7 @@ public class CreateAccountRequest {
     @NotBlank(message = "Account holder phone is required")
     private String phone;
 
-    @NotBlank(message = "daily transaction limit is required")
+    @NotNull(message = "daily transaction limit is required")
     private BigDecimal dailyTransactionLimit;
 
     @NotNull(message = "AccounType is required")

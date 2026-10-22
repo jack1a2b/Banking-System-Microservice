@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.List;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -52,8 +53,9 @@ public class AccountService {
 
 
     public ResponseEntity<AccountResponse> getAccount(String accountNumber) {
+        log.info("Fetching with account number: {}", accountNumber);
         try {
-            if(accRepo.existsByAccountNumber(accountNumber)){
+            if(!accRepo.existsByAccountNumber(accountNumber)){
                 throw new RuntimeException("Account not found");
             }
             Account account = accRepo.findByAccountNumber(accountNumber);
@@ -62,14 +64,14 @@ public class AccountService {
 
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (RuntimeException e) {
-            throw  new RuntimeException("Account not found");
+            throw  new RuntimeException("Account not found " + e.getMessage());
         }
     }
 
     public ResponseEntity<BigDecimal> getBalance(String accountNumber) {
         try {
 
-            if(accRepo.existsByAccountNumber(accountNumber)){
+            if(!accRepo.existsByAccountNumber(accountNumber)){
                 throw new RuntimeException("Account number not found");
             }
 
@@ -91,7 +93,7 @@ public class AccountService {
         try {
             log.info("Blocking account: {}", accountNumber);
 
-            if(accRepo.existsByAccountNumber(accountNumber)){
+            if(!accRepo.existsByAccountNumber(accountNumber)){
                 throw new RuntimeException("Account number not found");
             }
 
@@ -118,7 +120,7 @@ public class AccountService {
      */
     public ResponseEntity<String> deductBalance(String accountNumber, BigDecimal amount) {
         try {
-            if(accRepo.existsByAccountNumber(accountNumber)){
+            if(!accRepo.existsByAccountNumber(accountNumber)){
                 throw new RuntimeException("Account number not exist");
             }
 
@@ -155,7 +157,7 @@ public class AccountService {
      */
     public ResponseEntity<String> creditAccount(String accountNumber, BigDecimal amount) {
         try {
-            if(accRepo.existsByAccountNumber(accountNumber)){
+            if(!accRepo.existsByAccountNumber(accountNumber)){
                 throw new RuntimeException("Account number not exist");
             }
 
@@ -163,6 +165,8 @@ public class AccountService {
             Account account = accRepo.findByAccountNumber(accountNumber);
             log.info("Crediting account: {}\nBalance before crediting {}", accountNumber, account.getBalance() );
             account.setBalance(account.getBalance().add(amount));
+
+            accRepo.save(account);
 
             log.info("Crediting account: {}\nBalance before crediting {}", accountNumber, account.getBalance() );
             return  new ResponseEntity<>("Account credited successfully", HttpStatus.OK);
@@ -175,6 +179,9 @@ public class AccountService {
     public ResponseEntity<Boolean> checkBalance(String accountNumber, BigDecimal amount) {
         try {
             Account account = accRepo.findByAccountNumber(accountNumber);
+            if(!accRepo.existsByAccountNumber(accountNumber)){
+                throw new RuntimeException("Account not found for account number: " + accountNumber);
+            }
             if(account.getBalance().compareTo(amount) > 0){
                 return new ResponseEntity<>(true, HttpStatus.OK);
             }
@@ -223,4 +230,7 @@ public class AccountService {
     }
 
 
+    public ResponseEntity<List<Account>> getAllAccounts() {
+        return new ResponseEntity<>(accRepo.findAll(), HttpStatus.OK);
+    }
 }
