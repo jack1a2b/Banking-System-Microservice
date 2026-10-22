@@ -103,10 +103,16 @@ public class EventConsumerController {
     @KafkaListener(topics = "payment.completed")
     public void consumePaymentCompleted(@Payload Map<String, Object> payload){
         try {
+            String accountNumber = payload.get("accountNumber").toString();
+            String amount = payload.get("amount").toString();
 
-
+            String subject = "PAYMENT SUCCESSFUL!!";
+            String message = "Payment of D" + amount + " completed. \n"
+                            + "Razorpay ID: " + payload.get("razorpayPaymentId");
+            notificationService.alertUser(accountNumber, subject, message);
 
         }catch (Exception e){
+            log.error("Error handling payment notification to user");
             throw new RuntimeException(e.getMessage());
         }
     }
