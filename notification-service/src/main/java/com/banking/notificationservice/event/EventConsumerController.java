@@ -11,6 +11,7 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 
 @Slf4j
@@ -80,5 +81,35 @@ public class EventConsumerController {
             throw new RuntimeException(e);
         }
     }
+    @KafkaListener(topics = "transaction.refunded")
+    public void consumeTransactionRefunded(@Payload OtpGeneratedEventDTO event){
+        try {
+            String accountNumber = event.getAccountNumber();
+            BigDecimal amount = event.getAmount();
+            String reason = event.getReason();
+            String transactionId = event.getTransactionId();
+
+            String subject = "REFUND PROCESSED";
+            String message = "Your transaction with transactionId: " + transactionId + ", was cancelled!!\n"+
+                    "Reason: " + reason + "\n" +
+                    "Amount: " + amount;
+            notificationService.alertUser(accountNumber, subject, message);
+        } catch (Exception e) {
+            log.error("Error sending transaction refunded alert to the user {}", e.getMessage() );
+            throw new RuntimeException(e);
+        }
+    }
+
+    @KafkaListener(topics = "payment.completed")
+    public void consumePaymentCompleted(@Payload Map<String, Object> payload){
+        try {
+
+
+
+        }catch (Exception e){
+            throw new RuntimeException(e.getMessage());
+        }
+    }
+
 
 }
