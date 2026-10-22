@@ -11,5 +11,10 @@ public class NotificationService {
 
 
     public void alertUser( String accountNumber,String subject, String reason) {
+        log.info("------------------------------");
+        log.info("Account: {}", accountNumber);
+        log.info("Subject: {}", subject);
+        log.info(reason);
+        log.info("------------------------------");
     }
 }
