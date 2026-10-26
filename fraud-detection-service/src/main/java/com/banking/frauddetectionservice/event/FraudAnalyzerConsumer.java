@@ -1,9 +1,7 @@
 package com.banking.frauddetectionservice.event;
 
 
-import com.banking.frauddetectionservice.dto.TransactionEvent;
 import com.banking.frauddetectionservice.service.FraudService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -12,11 +10,13 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 
 @Slf4j
-@RequiredArgsConstructor
 @Service
 public class FraudAnalyzerConsumer {
 
     FraudService service;
+    public FraudAnalyzerConsumer(FraudService service){
+        this.service = service;
+    }
 
     /**
      * This event is publish by the transaction by initiating the transaction

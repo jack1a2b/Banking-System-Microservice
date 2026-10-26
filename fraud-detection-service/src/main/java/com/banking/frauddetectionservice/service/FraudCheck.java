@@ -4,6 +4,7 @@ import com.banking.frauddetectionservice.dto.TransactionResponse;
 import com.banking.frauddetectionservice.dto.FraudCheckResult;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -12,6 +13,7 @@ import java.util.List;
 
 
 @Slf4j
+@Service
 public class FraudCheck {
 
     public FraudCheckResult performFraudChecks( String accountNumber, List<TransactionResponse> allTransactions, BigDecimal currentTransactionAmount, BigDecimal accountBalance) {

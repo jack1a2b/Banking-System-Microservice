@@ -16,7 +16,6 @@ import java.util.Map;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class FraudService {
     private static final String VERIFICATION_REQUIRED_TOPIC = "verification.required";
     private static final String FRAUD_CHECK_CLEAN_RESULT_TOPIC = "fraud.check.clean";
@@ -24,16 +23,20 @@ public class FraudService {
     TransactionServiceClient transClient;
     AccountServiceClient accClient;
     FraudCheck fraudCheck;
-
     private  final KafkaTemplate<String, Object> kafkaTemplate;
+
+    public FraudService(TransactionServiceClient transClient, AccountServiceClient accClient, FraudCheck fraudCheck, KafkaTemplate<String, Object> kafkaTemplate){
+        this.accClient = accClient;
+        this.fraudCheck = fraudCheck;
+        this.kafkaTemplate = kafkaTemplate;
+        this.transClient = transClient;
+    }
 
     public void analyzeTransaction(Map<String, Object> event) {
         String senderAccountNumber = event.get("senderAccountNumber").toString();
-        BigDecimal amount = (BigDecimal) event.get("amount");
+        BigDecimal amount = new BigDecimal(event.get("amount").toString());
         String transactionId = event.get("transactionId").toString();
         String receiverAccountNumber = event.get("receiverAccountNumber").toString();
-        String reason = event.get("reason").toString();
-
 
 
         ResponseEntity<BigDecimal> accClientBalance = accClient.getBalance(senderAccountNumber);
@@ -51,7 +54,7 @@ public class FraudService {
             event.put("isFraud", true);
             event.put("reason", result.getReason());
 
-            log.info("Suspicious activities detected - account: {}\nReason: {}\nRequesting OTP verification", senderAccountNumber,reason);
+            log.info("Suspicious activities detected - account: {}\nReason: {}\nRequesting OTP verification", senderAccountNumber,event.get("reason"));
 
             /**
              * This event is published when fraud is detected and sends it to the transaction service(In the TransactionEventConsumerService in the events package)

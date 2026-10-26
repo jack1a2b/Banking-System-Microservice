@@ -166,9 +166,9 @@ public class AccountService {
             log.info("Crediting account: {}\nBalance before crediting {}", accountNumber, account.getBalance() );
             account.setBalance(account.getBalance().add(amount));
 
-            accRepo.save(account);
+            Account savedAccount = accRepo.save(account);
 
-            log.info("Crediting account: {}\nBalance before crediting {}", accountNumber, account.getBalance() );
+            log.info("Credited account: {}\nBalance after crediting {}", accountNumber, savedAccount.getBalance() );
             return  new ResponseEntity<>("Account credited successfully", HttpStatus.OK);
         }catch (RuntimeException e){
             throw new RuntimeException("Account not credited");

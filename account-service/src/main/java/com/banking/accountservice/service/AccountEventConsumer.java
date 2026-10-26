@@ -27,8 +27,7 @@ public class AccountEventConsumer {
 
         try {
             String receiverAccount = event.get("receiverAccountNumber").toString();
-            BigDecimal amount = (BigDecimal) event.get("amount");
-
+            BigDecimal amount = new BigDecimal(event.get("amount").toString());
             accService.creditAccount(receiverAccount, amount);
         } catch (Exception e) {
             log.error("Error crediting account {}", e.getMessage());

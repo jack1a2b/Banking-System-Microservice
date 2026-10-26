@@ -22,14 +22,20 @@ import java.util.Map;
 
 @Data
 @Slf4j
-@AllArgsConstructor
-@NoArgsConstructor
 @Service
 public class TransactionEventConsumerService {
 
     private TransactionService transactionService;
     private TransactionRepo transRepo;
     private long otpExpirationDuration = 5;
+
+    public TransactionEventConsumerService(TransactionService transactionService, TransactionRepo transRepo, StringRedisTemplate redisTemplate, KafkaTemplate<String, Object> kafkaTemplate) {
+        this.transactionService = transactionService;
+        this.transRepo = transRepo;
+        this.redisTemplate = redisTemplate;
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
     StringRedisTemplate redisTemplate;
     KafkaTemplate<String, Object> kafkaTemplate;
 
@@ -85,7 +91,9 @@ public class TransactionEventConsumerService {
      */
     @KafkaListener(topics = "fraud.check.clean",groupId = "transaction-service-group")
     public void consumeFraudClean(@Payload Map<String, Object> event){
+        log.info("{}",event);
         String transactionId = event.get("transactionId").toString();
         transactionService.processFraudCheckClean(transactionId);
+
     }
 }

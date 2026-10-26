@@ -24,7 +24,7 @@ public class EventConsumerController {
         try {
             String accountNumber = eventDTO.get("senderAccountNumber").toString();
             String otp = eventDTO.get("otp").toString();
-            BigDecimal amount = (BigDecimal) eventDTO.get("amount");
+            BigDecimal amount = new BigDecimal(eventDTO.get("amount").toString());
             String transactionId = eventDTO.get("transactionId").toString();
             String reason = eventDTO.get("reason").toString();
 
@@ -44,11 +44,12 @@ public class EventConsumerController {
 
     @KafkaListener(topics = "transaction.completed")
     public void consumeTransactionCompleted(@Payload Map<String, Object> event){
+        log.info("Sending alerts to the user {}", event);
         try {
             String senderAccount = event.get("senderAccountNumber").toString();
             String recieverAccount = event.get("receiverAccountNumber").toString();
             String transactionId = event.get("transactionId").toString();
-            BigDecimal amount = (BigDecimal) event.get("amount");
+            BigDecimal amount = new BigDecimal(event.get("amount").toString());
 
             String subject = "DEBIT ALERT";
             String message = "D" + amount + " debited from account: " + senderAccount;
@@ -66,7 +67,7 @@ public class EventConsumerController {
     public void consumeFraudDetected(@Payload Map<String, Object> event){
         try {
             String accountNumber = event.get("accountNumber").toString();
-            BigDecimal amount = (BigDecimal) event.get("amount");
+            BigDecimal amount = new BigDecimal(event.get("amount").toString());
             String reason = event.get("reason").toString();
 
             String subject = "FRAUD DETECTED";
@@ -83,7 +84,7 @@ public class EventConsumerController {
     public void consumeTransactionRefunded(@Payload Map<String, Object> event){
         try {
             String accountNumber = event.get("accountNumber").toString();
-            BigDecimal amount = (BigDecimal) event.get("amount");
+            BigDecimal amount = new BigDecimal(event.get("amount").toString());
             String reason = event.get("reason").toString();
             String transactionId = event.get("transactionId").toString();
 

@@ -3,7 +3,6 @@ package com.banking.transactionservice.service;
 
 import com.banking.transactionservice.client.AccountServiceClient;
 import com.banking.transactionservice.dto.*;
-import com.banking.transactionservice.event.TransactionInitiatedEvent;
 import com.banking.transactionservice.model.Transaction;
 import com.banking.transactionservice.model.TransactionStatus;
 import com.banking.transactionservice.model.TransactionType;
@@ -130,18 +129,11 @@ public class TransactionService {
             Transaction savedTransaction = transRepo.save(transaction);
             log.info("transaction saved as processing {}", savedTransaction.getId());
 
-            TransactionInitiatedEvent event = new TransactionInitiatedEvent();
-
-            Map<String, Object> event2 = new HashMap<>();
-            event2.put("transactionId", savedTransaction.getId());
-            event2.put("amount", savedTransaction.getAmount());
-            event2.put("senderAccountNumber", savedTransaction.getSenderAccountNumber());
-            event2.put("receiverAccountNumber", savedTransaction.getReceiverAccountNumber());
-
-            event.setTransactionId(savedTransaction.getId());
-            event.setAmount(savedTransaction.getAmount());
-            event.setSenderAccountNumber(savedTransaction.getSenderAccountNumber());
-            event.setReceiverAccountNumber(savedTransaction.getReceiverAccountNumber());
+            Map<String, Object> event = new HashMap<>();
+            event.put("transactionId", savedTransaction.getId());
+            event.put("amount", savedTransaction.getAmount().toString());
+            event.put("senderAccountNumber", savedTransaction.getSenderAccountNumber());
+            event.put("receiverAccountNumber", savedTransaction.getReceiverAccountNumber());
 
 
             TransactionRequest transactionRequest = new TransactionRequest();
@@ -157,7 +149,7 @@ public class TransactionService {
              * To check for weather its to publish fraud.detected or fraud.clean event
              * To be consumed by the payment service
              */
-            kafkaTemplate.send(TRANSACTION_INITIATED_TOPIC,event.getTransactionId(), event2);
+            kafkaTemplate.send(TRANSACTION_INITIATED_TOPIC,transaction.getId(), event);
             log.info("Transaction initiated event published");
             return new ResponseEntity<>(transactionRequest, HttpStatus.OK);
         } catch (RuntimeException e) {
@@ -234,22 +226,24 @@ public class TransactionService {
 
     private void completeTransaction(Transaction transaction) {
         try {
+            log.info("Preparing the event to be sent to the notification service");
             Map<String, Object> eventDTO =  prepareEvent(transaction);
+            log.info("event dto: {}", eventDTO);
 
-            TransactionDto request = new TransactionDto(transaction.getReceiverAccountNumber(), transaction.getAmount());
-            String message = client.creditAccount(request).getBody();
+            log.info("Preparing the dto to be credit the receiver via feign");
+            log.info("calling the credit method now");
+            client.creditAccount(eventDTO);
 
             transaction.setFailureReason("");
-            transaction.setDescription(message);
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction.setCompletedAt(LocalDateTime.now());
             transRepo.save(transaction);
 
-
             kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC, eventDTO.get("transactionId").toString(), eventDTO);
+            log.info("Transaction completed event published");
         } catch (RuntimeException e) {
             log.info("Error completing the transaction in the complete transation method");
-            throw new RuntimeException(e);
+            throw new RuntimeException(e.getMessage());
         }
 
     }
@@ -278,7 +272,7 @@ public class TransactionService {
 
     private Map<String, Object> prepareEvent(Transaction transaction) {
         Map<String, Object> event = new HashMap<>();
-        event.put("amount", transaction.getAmount());
+        event.put("amount", transaction.getAmount().toString());
         event.put("senderAccountNumber", transaction.getSenderAccountNumber());
         event.put("receiverAccountNumber", transaction.getReceiverAccountNumber());
         event.put("transactionId", transaction.getId());
@@ -289,8 +283,10 @@ public class TransactionService {
 
     public void compensateSender(String senderAccountNumber, String transactionId, BigDecimal amount) {
         log.info("Compensating Transaction: {}\nTo account number: {} With amount: {} ", transactionId, senderAccountNumber ,amount );
+        Map<String, Object> request = new HashMap<>();
+        request.put("accountNumber", senderAccountNumber);
+        request.put("amount", amount);
 
-        TransactionDto request = new TransactionDto(senderAccountNumber, amount);
         client.creditAccount(request);
     }
 

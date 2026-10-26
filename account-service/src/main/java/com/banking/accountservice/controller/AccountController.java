@@ -14,7 +14,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @RequestMapping("/api/v1/accounts")
@@ -102,9 +104,12 @@ public class AccountController {
      * Tested and proven
      * @return
      */
-    @PutMapping("/credit")
-    public ResponseEntity<String> creditAccount(@RequestBody TransactionDto request){
-        return  accService.creditAccount(request.getAccountNumber(), request.getAmount());
+    @PostMapping("/credit")
+    public ResponseEntity<String> creditAccount(@RequestBody Map<String, Object> request){
+        log.info("Account credit logs: {}", request);
+        String accountNumber = request.get("receiverAccountNumber").toString();
+        BigDecimal amount = new BigDecimal(request.get("amount").toString());
+        return  accService.creditAccount(accountNumber, amount);
     }
 
     /**
