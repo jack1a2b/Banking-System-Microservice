@@ -3,6 +3,7 @@ package com.banking.accountservice.controller;
 
 import com.banking.accountservice.dto.AccountResponse;
 import com.banking.accountservice.dto.CreateAccountRequest;
+import com.banking.accountservice.dto.TransactionDto;
 import com.banking.accountservice.model.Account;
 import com.banking.accountservice.service.AccountService;
 import jakarta.validation.Valid;
@@ -85,13 +86,11 @@ public class AccountController {
 
     /**
      * Tested and proven
-     * @param accountNumber
-     * @param amount
      * @return
      */
-    @PutMapping("/{accountNumber}/deduct")
-    public ResponseEntity<String> deductBalance(@PathVariable String accountNumber, @RequestParam BigDecimal amount){
-        return accService.deductBalance(accountNumber, amount);
+    @PostMapping("/deduct")
+    public ResponseEntity<String> deductBalance(@RequestBody TransactionDto request){
+        return accService.deductBalance(request.getAccountNumber(), request.getAmount());
     }
 
     /**
@@ -101,13 +100,11 @@ public class AccountController {
 
     /**
      * Tested and proven
-     * @param accountNumber
-     * @param amount
      * @return
      */
-    @PutMapping("/{accountNumber}/credit")
-    public ResponseEntity<String> creditAccount(@PathVariable String accountNumber, @RequestParam BigDecimal amount){
-        return  accService.creditAccount(accountNumber, amount);
+    @PutMapping("/credit")
+    public ResponseEntity<String> creditAccount(@RequestBody TransactionDto request){
+        return  accService.creditAccount(request.getAccountNumber(), request.getAmount());
     }
 
     /**
@@ -117,14 +114,12 @@ public class AccountController {
 
     /**
      * Tested and proven
-     * @param accountNumber
-     * @param amount
      * @return
      */
-    @GetMapping("/{accountNumber}/check-balance")
-    public ResponseEntity<Boolean> checkBalance(@PathVariable String accountNumber, @RequestParam BigDecimal amount){
-        log.info("checking balance for account number: {}\nTo deduct amount {}", accountNumber, amount);
-        return accService.checkBalance(accountNumber, amount);
+    @PostMapping("/check-balance")
+    public ResponseEntity<Boolean> checkBalance(@RequestBody TransactionDto request){
+        log.info("checking balance for account number: {}\nTo deduct amount {}", request.getAccountNumber(), request.getAmount());
+        return accService.checkBalance(request.getAccountNumber(), request.getAmount());
     }
 
 }

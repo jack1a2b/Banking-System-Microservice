@@ -1,8 +1,5 @@
 package com.banking.notificationservice.event;
 
-
-import com.banking.notificationservice.dto.OtpGeneratedEventDTO;
-import com.banking.notificationservice.dto.TransactionCompletedEvent;
 import com.banking.notificationservice.service.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,14 +19,14 @@ public class EventConsumerController {
     NotificationService notificationService;
 
     @KafkaListener(topics = "otp.generated")
-    public void consumeOtpGenerated(@Payload OtpGeneratedEventDTO eventDTO){
+    public void consumeOtpGenerated(@Payload Map<String, Object> eventDTO){
 
         try {
-            String accountNumber = eventDTO.getAccountNumber();
-            String otp = eventDTO.getOtp();
-            BigDecimal amount = eventDTO.getAmount();
-            String transactionId = eventDTO.getTransactionId();
-            String reason = eventDTO.getReason();
+            String accountNumber = eventDTO.get("senderAccountNumber").toString();
+            String otp = eventDTO.get("otp").toString();
+            BigDecimal amount = (BigDecimal) eventDTO.get("amount");
+            String transactionId = eventDTO.get("transactionId").toString();
+            String reason = eventDTO.get("reason").toString();
 
             String subject = "TRANSACTION VERIFICATION REQUIRED";
             String message = "Suspicious activity detected on your account" +
@@ -46,12 +43,13 @@ public class EventConsumerController {
     }
 
     @KafkaListener(topics = "transaction.completed")
-    public void consumeTransactionCompleted(@Payload TransactionCompletedEvent event){
+    public void consumeTransactionCompleted(@Payload Map<String, Object> event){
         try {
-            String senderAccount = event.getSenderAccountNumber();
-            String recieverAccount = event.getRevieverAccountNumber();
-            String transactionId = event.getTransactionid();
-            BigDecimal amount = event.getAmount();
+            String senderAccount = event.get("senderAccountNumber").toString();
+            String recieverAccount = event.get("receiverAccountNumber").toString();
+            String transactionId = event.get("transactionId").toString();
+            BigDecimal amount = (BigDecimal) event.get("amount");
+
             String subject = "DEBIT ALERT";
             String message = "D" + amount + " debited from account: " + senderAccount;
             notificationService.alertUser(senderAccount, subject, message);
@@ -65,11 +63,11 @@ public class EventConsumerController {
     }
 
     @KafkaListener(topics = "fraud.detected")
-    public void consumeFraudDetected(@Payload OtpGeneratedEventDTO event){
+    public void consumeFraudDetected(@Payload Map<String, Object> event){
         try {
-            String accountNumber = event.getAccountNumber();
-            BigDecimal amount = event.getAmount();
-            String reason = event.getReason();
+            String accountNumber = event.get("accountNumber").toString();
+            BigDecimal amount = (BigDecimal) event.get("amount");
+            String reason = event.get("reason").toString();
 
             String subject = "FRAUD DETECTED";
             String message = "Fraud/Malicious activity detected on your account\n" +
@@ -82,12 +80,12 @@ public class EventConsumerController {
         }
     }
     @KafkaListener(topics = "transaction.refunded")
-    public void consumeTransactionRefunded(@Payload OtpGeneratedEventDTO event){
+    public void consumeTransactionRefunded(@Payload Map<String, Object> event){
         try {
-            String accountNumber = event.getAccountNumber();
-            BigDecimal amount = event.getAmount();
-            String reason = event.getReason();
-            String transactionId = event.getTransactionId();
+            String accountNumber = event.get("accountNumber").toString();
+            BigDecimal amount = (BigDecimal) event.get("amount");
+            String reason = event.get("reason").toString();
+            String transactionId = event.get("transactionId").toString();
 
             String subject = "REFUND PROCESSED";
             String message = "Your transaction with transactionId: " + transactionId + ", was cancelled!!\n"+

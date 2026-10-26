@@ -9,9 +9,10 @@ import com.banking.transactionservice.model.TransactionStatus;
 import com.banking.transactionservice.model.TransactionType;
 import com.banking.transactionservice.repository.TransactionRepo;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -19,21 +20,22 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
+@AllArgsConstructor
 public class TransactionService {
 
+    @Autowired
     private final KafkaTemplate<String, Object> kafkaTemplate;
     //will add redis dependency in my pom file later
-    private final StringRedisTemplate redisTemplate;
+    @Autowired
+    private final RedisTemplate<String, String> redisTemplate;
 
+    @Autowired
     private TransactionRepo transRepo;
+    @Autowired
     private AccountServiceClient client;
 
     private static final String TRANSACTION_INITIATED_TOPIC = "transaction.initiated";
@@ -94,11 +96,15 @@ public class TransactionService {
 
         try {
 
-            ResponseEntity<Boolean> result = client.checkBalance(request.getSenderAccountNumber(), request.getAmount());
+            TransactionDto dto = new TransactionDto(request.getSenderAccountNumber(), request.getAmount());
+
+            ResponseEntity<Boolean> result = client.checkBalance(dto);
+
 
             if (Boolean.TRUE.equals(result.getBody())){
+                TransactionDto transRequest = new TransactionDto(request.getSenderAccountNumber(), request.getAmount());
 //                kafkaTemplate.send("deduct.account", events);
-                client.deductBalance(request.getSenderAccountNumber(), request.getAmount());
+                client.deductBalance(transRequest);
 
             }else {
                 log.info("Amount balance is insufficient");
@@ -108,6 +114,7 @@ public class TransactionService {
             log.error("Problem calling the deduct method using the account service client");
             throw new RuntimeException("Problem calling the deduct method using the account service client " + e.getMessage());
         }
+
         try {
 
             Transaction transaction = new Transaction();
@@ -125,6 +132,12 @@ public class TransactionService {
 
             TransactionInitiatedEvent event = new TransactionInitiatedEvent();
 
+            Map<String, Object> event2 = new HashMap<>();
+            event2.put("transactionId", savedTransaction.getId());
+            event2.put("amount", savedTransaction.getAmount());
+            event2.put("senderAccountNumber", savedTransaction.getSenderAccountNumber());
+            event2.put("receiverAccountNumber", savedTransaction.getReceiverAccountNumber());
+
             event.setTransactionId(savedTransaction.getId());
             event.setAmount(savedTransaction.getAmount());
             event.setSenderAccountNumber(savedTransaction.getSenderAccountNumber());
@@ -139,7 +152,12 @@ public class TransactionService {
             transactionRequest.setReceiverAccountNumber(savedTransaction.getReceiverAccountNumber());
             transactionRequest.setDescription(savedTransaction.getDescription());
 
-            kafkaTemplate.send(TRANSACTION_INITIATED_TOPIC, event.getTransactionId(), event);
+            /**
+             * This event will consumed by the fraud detection service
+             * To check for weather its to publish fraud.detected or fraud.clean event
+             * To be consumed by the payment service
+             */
+            kafkaTemplate.send(TRANSACTION_INITIATED_TOPIC,event.getTransactionId(), event2);
             log.info("Transaction initiated event published");
             return new ResponseEntity<>(transactionRequest, HttpStatus.OK);
         } catch (RuntimeException e) {
@@ -165,19 +183,22 @@ public class TransactionService {
             transRepo.save(transaction);
             compensateSender(transaction.getSenderAccountNumber(),transactionId, transaction.getAmount());
 
-            OtpGeneratedEventDTO eventDTO = prepareOtpExpireEvent(transactionId, transaction);
+            Map<String, Object> eventDTO = prepareOtpExpireEvent(transactionId, transaction);
 
-            kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC, eventDTO);
+            /**
+             * This published event get consumed by the notification service to notify the user about the conpensation
+             */
+            kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC,eventDTO.get("transactionId").toString(), eventDTO);
             return new ResponseEntity<>(generateResponse(transaction), HttpStatus.NOT_ACCEPTABLE);
         }
 
         if(!otp.equals(savedOtp)){
             //log incorrect otp block account and flag
             redisTemplate.delete(key);
-            OtpGeneratedEventDTO eventDTO = prepareOtpEvent(transactionId, transaction);
+            Map<String, Object> eventDTO = prepareOtpEvent(transactionId, transaction);
 
             //Account service listen to this event and blocks the account immediately!!
-            kafkaTemplate.send(FRAUD_DETECTED_TOPIC, eventDTO);
+            kafkaTemplate.send(FRAUD_DETECTED_TOPIC, eventDTO.get("transactionId").toString(), eventDTO);
             //String message = client.blockAccount(transaction.getSenderAccountNumber());
             transaction.setDescription("Account Block kindly visit the nearest branch");
             transaction.setStatus(TransactionStatus.FLAGGED);
@@ -186,7 +207,7 @@ public class TransactionService {
             compensateSender(transaction.getSenderAccountNumber(),transactionId, transaction.getAmount());
 
 
-            kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC, eventDTO);
+            kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC, eventDTO.get("transactionId").toString(), eventDTO);
             return new ResponseEntity<>(generateResponse(transaction), HttpStatus.NOT_ACCEPTABLE);
         }
         //Credit account
@@ -213,14 +234,19 @@ public class TransactionService {
 
     private void completeTransaction(Transaction transaction) {
         try {
-            TransactionCompletedEvent eventDTO = prepareEvent(transaction);
-            String message = client.creditAccount(transaction.getReceiverAccountNumber(),transaction.getAmount()).getBody();
+            Map<String, Object> eventDTO =  prepareEvent(transaction);
+
+            TransactionDto request = new TransactionDto(transaction.getReceiverAccountNumber(), transaction.getAmount());
+            String message = client.creditAccount(request).getBody();
+
             transaction.setFailureReason("");
             transaction.setDescription(message);
             transaction.setStatus(TransactionStatus.COMPLETED);
             transaction.setCompletedAt(LocalDateTime.now());
             transRepo.save(transaction);
-            kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC, eventDTO);
+
+
+            kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC, eventDTO.get("transactionId").toString(), eventDTO);
         } catch (RuntimeException e) {
             log.info("Error completing the transaction in the complete transation method");
             throw new RuntimeException(e);
@@ -228,40 +254,44 @@ public class TransactionService {
 
     }
 
-    private OtpGeneratedEventDTO prepareOtpExpireEvent(String transactionId, Transaction transaction) {
-        OtpGeneratedEventDTO eventDTO = new OtpGeneratedEventDTO();
-        eventDTO.setTransactionId(transactionId);
-        eventDTO.setReason("Otp already expired!!");
-        eventDTO.setAmount(transaction.getAmount());
-        eventDTO.setAccountNumber(transaction.getSenderAccountNumber());
-        eventDTO.setOtp("");
+    private Map<String, Object> prepareOtpExpireEvent(String transactionId, Transaction transaction) {
+        Map<String, Object> eventDTO = new HashMap<>();
+        eventDTO.put("transactionId", transactionId);
+        eventDTO.put("reason", "Otp already expired");
+        eventDTO.put("amount", transaction.getAmount());
+        eventDTO.put("accountNumber", transaction.getSenderAccountNumber());
+        eventDTO.put("otp", null);
         return eventDTO;
     }
 
 
-    private OtpGeneratedEventDTO prepareOtpEvent(String transactionId, Transaction transaction) {
-        OtpGeneratedEventDTO eventDTO = new OtpGeneratedEventDTO();
-        eventDTO.setTransactionId(transactionId);
-        eventDTO.setReason("Fraud detected");
-        eventDTO.setAmount(transaction.getAmount());
-        eventDTO.setAccountNumber(transaction.getSenderAccountNumber());
-        eventDTO.setOtp("");
+    private Map<String, Object> prepareOtpEvent(String transactionId, Transaction transaction) {
+
+        Map<String, Object> eventDTO = new HashMap<>();
+        eventDTO.put("transactionId", transactionId);
+        eventDTO.put("reason", "We detected some malicious fraud activities on this account");
+        eventDTO.put("amount", transaction.getAmount());
+        eventDTO.put("accountNumber", transaction.getSenderAccountNumber());
+        eventDTO.put("otp", null);
         return eventDTO;
     }
 
-    private TransactionCompletedEvent prepareEvent(Transaction transaction) {
-        TransactionCompletedEvent eventDTO = new TransactionCompletedEvent();
-        eventDTO.setAmount(transaction.getAmount());
-        eventDTO.setSenderAccountNumber(transaction.getSenderAccountNumber());
-        eventDTO.setRevieverAccountNumber(transaction.getReceiverAccountNumber());
-        eventDTO.setTransactionid(transaction.getId());
-        eventDTO.setReferenceNumber(transaction.getReferenceNumber());
-        return eventDTO;
+    private Map<String, Object> prepareEvent(Transaction transaction) {
+        Map<String, Object> event = new HashMap<>();
+        event.put("amount", transaction.getAmount());
+        event.put("senderAccountNumber", transaction.getSenderAccountNumber());
+        event.put("receiverAccountNumber", transaction.getReceiverAccountNumber());
+        event.put("transactionId", transaction.getId());
+        event.put("referenceNumber", transaction.getReferenceNumber());
+
+        return event;
     }
 
     public void compensateSender(String senderAccountNumber, String transactionId, BigDecimal amount) {
         log.info("Compensating Transaction: {}\nTo account number: {} With amount: {} ", transactionId, senderAccountNumber ,amount );
-        client.creditAccount(senderAccountNumber, amount);
+
+        TransactionDto request = new TransactionDto(senderAccountNumber, amount);
+        client.creditAccount(request);
     }
 
 

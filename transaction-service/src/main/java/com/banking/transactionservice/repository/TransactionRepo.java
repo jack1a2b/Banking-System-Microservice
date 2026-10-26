@@ -1,6 +1,5 @@
 package com.banking.transactionservice.repository;
 
-import com.banking.transactionservice.dto.TransactionResponse;
 import com.banking.transactionservice.model.Transaction;
 import jakarta.validation.Valid;
 import org.springframework.data.jpa.repository.JpaRepository;

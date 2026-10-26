@@ -2,7 +2,6 @@ package com.banking.frauddetectionservice.service;
 
 import com.banking.frauddetectionservice.client.AccountServiceClient;
 import com.banking.frauddetectionservice.client.TransactionServiceClient;
-import com.banking.frauddetectionservice.dto.TransactionEvent;
 import com.banking.frauddetectionservice.dto.TransactionResponse;
 import com.banking.frauddetectionservice.dto.FraudCheckResult;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -27,31 +27,47 @@ public class FraudService {
 
     private  final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public void analyzeTransaction(TransactionEvent event) {
+    public void analyzeTransaction(Map<String, Object> event) {
+        String senderAccountNumber = event.get("senderAccountNumber").toString();
+        BigDecimal amount = (BigDecimal) event.get("amount");
+        String transactionId = event.get("transactionId").toString();
+        String receiverAccountNumber = event.get("receiverAccountNumber").toString();
+        String reason = event.get("reason").toString();
 
 
-        ResponseEntity<BigDecimal> accClientBalance = accClient.getBalance(event.getAccountNumber());
+
+        ResponseEntity<BigDecimal> accClientBalance = accClient.getBalance(senderAccountNumber);
 
         BigDecimal accountBalance = accClientBalance.getBody();
 
 
-        log.info("Checking transaction: {}\nAccount: {}\nAmount: {}\nBalance: {}", event.getTransactionId(), event.getAccountNumber(), event.getAmount(), accountBalance);
+        log.info("Checking transaction: {}\nAccount: {}\nAmount: {}\nBalance: {}", transactionId, senderAccountNumber, amount, accountBalance);
 
-        List<TransactionResponse> responses = transClient.accountTransactionHistory(event.getAccountNumber());
+        List<TransactionResponse> responses = transClient.accountTransactionHistory(senderAccountNumber);
 
-        FraudCheckResult result = fraudCheck.performFraudChecks(event.getAccountNumber(), responses, event.getAmount(), accountBalance);
+        FraudCheckResult result = fraudCheck.performFraudChecks(senderAccountNumber, responses, amount, accountBalance);
 
         if(result.isFraud()){
-            event.setFraud(true);
-            event.setReason(result.getReason());
-            log.info("Suspicious activities detected - account: {}\nReason: {}\nRequesting OTP verification", event.getAccountNumber(), event.getReason());
+            event.put("isFraud", true);
+            event.put("reason", result.getReason());
 
-            kafkaTemplate.send(VERIFICATION_REQUIRED_TOPIC, event.getTransactionId(), event);
+            log.info("Suspicious activities detected - account: {}\nReason: {}\nRequesting OTP verification", senderAccountNumber,reason);
+
+            /**
+             * This event is published when fraud is detected and sends it to the transaction service(In the TransactionEventConsumerService in the events package)
+             * To generate the OTP for verification
+             */
+            kafkaTemplate.send(VERIFICATION_REQUIRED_TOPIC,transactionId, event);
         }else{
             log.info("Transaction clean");
-            event.setReason(null);
-            event.setFraud(false);
-            kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC, event);
+            event.put("isFraud", false);
+            event.put("reason", null);
+
+            /**
+             * This event is published a fraud clean check and sends it to the  transaction service(In the TransactionEventConsumerService in the events package)
+             * To process fraud check clean
+             */
+            kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC,transactionId, event);
         }
         
 

@@ -1,16 +1,17 @@
 package com.banking.accountservice.service;
 
-import com.banking.accountservice.dto.TransactionEvent;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.Map;
 
 @AllArgsConstructor
 @Slf4j
+@Service
 public class AccountEventConsumer {
 
     AccountService accService;
@@ -22,13 +23,13 @@ public class AccountEventConsumer {
      * @param event
      */
     @KafkaListener(topicPattern = "transaction.completed")
-    public void consumeTransactionCompleted(@Payload TransactionEvent event){
+    public void consumeTransactionCompleted(@Payload Map<String, Object> event){
 
         try {
-            String recieverAccount = event.getAccountNumber();
-            BigDecimal amount = event.getAmount();
+            String receiverAccount = event.get("receiverAccountNumber").toString();
+            BigDecimal amount = (BigDecimal) event.get("amount");
 
-            accService.creditAccount(recieverAccount, amount);
+            accService.creditAccount(receiverAccount, amount);
         } catch (Exception e) {
             log.error("Error crediting account {}", e.getMessage());
             throw new RuntimeException(e);
@@ -41,26 +42,30 @@ public class AccountEventConsumer {
      */
 
     @KafkaListener(topics = "fraud.detected")
-    public void consumeFraudDetection(@Payload TransactionEvent event){
-        log.info("Fraud detected blocking account: {}\nWith transactionId: {}", event.getAccountNumber(), event.getTransactionId());
+    public void consumeFraudDetection(@Payload Map<String, Object> event){
+        log.info("Fraud detected blocking account: {}\nWith transactionId: {}", event.get("accountNumber"), event.get("transactionId"));
           try {
-              String accountNumber = event.getAccountNumber();
+              String accountNumber = event.get("accountNumber").toString();
               accService.blockAccount(accountNumber);
           } catch (Exception e) {
-              log.error("Error blocking account: {}", event.getAccountNumber());
+              log.error("Error blocking account: {}", event.get("accountNumber"));
           }
     }
 
     /**
      * Consumes account.deduct events from kafka
      * deduct amount from account
+     * this method is deprecated for now using the client with openFeign to call the account service synchronously to deduct amount
      */
     @KafkaListener(topics = "deduct.account")
-    public void consumeAccountDeductionEvents(@Payload TransactionEvent event){
+    public void consumeAccountDeductionEvents(@Payload Map<String, Object> event){
         try  {
-            accService.deductBalance(event.getAccountNumber(), event.getAmount());
+            String accountNumber = event.get("accountNumber").toString();
+            BigDecimal amount = (BigDecimal) event.get("amount");
+
+            accService.deductBalance(accountNumber, amount);
         }catch (Exception e){
-            log.error("Error deducting account: {}", event.getAccountNumber());
+            log.error("Error deducting account: {}, Cause by: {}", event.get("accountNumber"), e.getMessage());
         }
     }
 
