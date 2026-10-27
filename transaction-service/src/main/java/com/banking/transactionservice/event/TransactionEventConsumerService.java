@@ -49,8 +49,6 @@ public class TransactionEventConsumerService {
         log.warn("Verification required for transaction: {}, account: {}, amount: {}\nReason: {}", event.get("transactionId"), event.get("senderAccountNumber"), event.get("amount"), event.get("reason"));
         String transactionId = event.get("transactionId").toString();
         String reason = event.get("reason").toString();
-        String accountNumber = event.get("senderAccountNumber").toString();
-        BigDecimal amount = (BigDecimal) event.get("amount");
 
 
         Transaction transaction = transRepo.findById(transactionId).get();
